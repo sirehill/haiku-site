@@ -167,10 +167,10 @@
     </div>
   </div>
 
-  <!-- Supabase Client -->
+  <!-- Supabase client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
   <script>
-    // 🔑 Supabase keys: replace with YOUR keys!
+    // Replace these with your real Supabase keys!
     const SUPABASE_URL = 'https://vsgllmvencpwnbljucfa.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzZ2xsbXZlbmNwd25ibGp1Y2ZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4MzA3MDMsImV4cCI6MjA2NzQwNjcwM30.CZ-zhvnA0ggYpZpr0brp_08gfa9XPnH4skeQKoQcUsE';
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -210,7 +210,6 @@
       });
     }
 
-    // Your existing haiku checker:
     function countSyllables(word) {
       word = word.toLowerCase();
       if (word.length <= 3) { return 1; }
@@ -276,9 +275,6 @@
       </p>`;
     }
 
-    document.getElementById('haikuInput').addEventListener('input', updateLiveSyllables);
-
-    // Wikipedia inspiration stays the same:
     async function fetchWikipediaTopRead(date) {
       const newsList = document.getElementById('newsList');
       const newsLoading = document.getElementById('newsLoading');
@@ -346,7 +342,7 @@
       }
     }
 
-    (async function init() {
+    window.addEventListener('DOMContentLoaded', async () => {
       const newsLoading = document.getElementById('newsLoading');
       const today = new Date();
       const yesterday = new Date();
@@ -356,6 +352,8 @@
       const todayString = today.toISOString().split('T')[0];
       datePicker.max = todayString;
       datePicker.value = todayString;
+
+      await loadHaikus();
 
       try {
         await fetchWikipediaTopRead(today);
@@ -367,8 +365,8 @@
         }
       }
 
-      loadHaikus();
-    })();
+      document.getElementById('haikuInput').addEventListener('input', updateLiveSyllables);
+    });
 
     document.getElementById('datePicker').addEventListener('change', async (e) => {
       const pickedDate = new Date(e.target.value);
