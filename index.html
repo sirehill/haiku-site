@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Daily Haiku 🌸</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sawarabi+Mincho&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: #e6f7ff;
+      font-family: 'Sawarabi Mincho', serif;
+      display: flex;
+      max-width: 1200px;
+      margin: 50px auto;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+
+    .inspiration {
+      flex: 1;
+      margin-right: 30px;
+      background: #ffffffcc;
+      padding: 20px;
+      border-radius: 10px;
+      overflow-y: auto;
+      max-height: 600px;
+    }
+
+    .haiku-checker {
+      flex: 2;
+      background: #ffffffcc;
+      padding: 30px;
+      border-radius: 10px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    h1::after {
+      content: ' 🌸';
+    }
+
+    h2 {
+      font-size: 1.8em;
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin: 10px 0 5px;
+    }
+
+    input[type="date"] {
+      padding: 6px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 160px;
+      padding: 15px;
+      font-size: 18px;
+      border: 2px solid #f4cccc;
+      border-radius: 10px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    button {
+      margin-top: 15px;
+      background: #f4cccc;
+      border: none;
+      color: #333;
+      padding: 10px 20px;
+      font-size: 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #f2b8b5;
+    }
+
+    .result {
+      margin-top: 20px;
+      font-size: 18px;
+      text-align: left;
+    }
+
+    .valid {
+      color: #3c8031;
+      font-weight: bold;
+    }
+
+    .invalid {
+      color: #b30000;
+      font-weight: bold;
+    }
+
+    .saved-haiku {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      white-space: pre-line;
+    }
+
+    .feed {
+      margin-top: 40px;
+      text-align: left;
+    }
+
+    .upvote-btn {
+      margin-top: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #0077b6;
+      background: none;
+      border: none;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="inspiration">
+    <h2>Today's Inspiration</h2>
+    <label for="datePicker">Pick a date:</label>
+    <input type="date" id="datePicker">
+    <p id="newsLoading">Loading inspiration...</p>
+    <ul id="newsList"></ul>
+  </div>
+
+  <div class="haiku-checker">
+    <h1>Daily Haiku</h1>
+    <textarea id="haikuInput" placeholder="Write your haiku here..." spellcheck="true"></textarea>
+    <div class="note">Note: Red underlines mean spelling errors — fix them before saving!</div>
+    <div id="liveSyllables" class="result"></div>
+    <button onclick="checkHaiku()">Check Haiku</button>
+    <button onclick="saveHaiku()">💾 Save Haiku</button>
+    <div id="result" class="result"></div>
+
+    <div class="feed">
+      <h3>🌸 Haiku Feed</h3>
+      <div id="haikuFeed">Loading saved haikus...</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script>
+    const SUPABASE_URL = 'https://vsgllmvencpwnbljucfa.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzZ2xsbXZlbmNwd25ibGp1Y2ZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4MzA3MDMsImV4cCI6MjA2NzQwNjcwM30.CZ-zhvnA0ggYpZpr0brp_08gfa9XPnH4skeQKoQcUsE';
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const badWords = [
+      "fuck","shit","bitch","cunt","nigger","faggot","asshole","bastard",
+      "slut","whore","dick","pussy","cock","twat","wanker","motherfucker",
+      "nigga","damn","goddamn","bollocks","bugger","prick","arse","arsehole"
+    ];
+
+    function containsBadWords(text) {
+      const lower = text.toLowerCase();
+      return badWords.some(word => lower.includes(word));
+    }
+
+    let selectedDate = new Date();
+
+    let userId = localStorage.getItem('user_id');
+    if (!userId) {
+      userId = crypto.randomUUID();
+      localStorage.setItem('user_id', userId);
+    }
+
+    async function saveHaiku() {
+      const haikuText = document.getElementById('haikuInput').value.trim();
+      if (!haikuText) {
+        alert('Please write a haiku!');
+        return;
+      }
+
+      if (containsBadWords(haikuText)) {
+        alert('Your haiku contains inappropriate language.');
+        return;
+      }
+
+      const lines = haikuText.split('\n').map(line => line.trim()).filter(line => line !== '');
+      if (lines.length !== 3) {
+        alert('Your haiku must have exactly 3 lines.');
+        return;
+      }
+
+      const syllableCounts = lines.map(syllableCount);
+      const isValid = syllableCounts[0] === 5 && syllableCounts[1] === 7 && syllableCounts[2] === 5;
+
+      if (!isValid) {
+        alert(`Your haiku does not match the 5-7-5 pattern.\nIt has: ${syllableCounts.join(' / ')} syllables.`);
+        return;
+      }
+
+      const { error } = await client.from('haikus').insert([
+        { text: haikuText, created_at: selectedDate.toISOString(), upvotes: 0 }
+      ]);
+
+      if (error) {
+        alert('Error saving haiku: ' + error.message);
+        console.error(error);
+      } else {
+        alert('✅ Haiku saved!');
+        loadHaikus(selectedDate);
+      }
+    }
+
+    async function upvoteHaiku(haikuId) {
+      const { data: existingVote } = await client
+        .from('votes')
+        .select('*')
+        .eq('haiku_id', haikuId)
+        .eq('user_id', userId);
+
+      if (existingVote.length > 0) {
+        alert('You already upvoted this haiku.');
+        return;
+      }
+
+      await client.from('votes').insert([{ haiku_id: haikuId, user_id: userId }]);
+      await client.from('haikus').update({ upvotes: supabase.rpc('increment', { x: 1 }) }).eq('id', haikuId);
+
+      // fallback if your DB doesn't have the 'increment' RPC, use:
+      await client.from('haikus').update({ upvotes: supabase.sql`upvotes + 1` }).eq('id', haikuId);
+
+      loadHaikus(selectedDate);
+    }
+
+    async function loadHaikus(date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+
+      const { data, error } = await client
+        .from('haikus')
+        .select('*')
+        .gte('created_at', start.toISOString())
+        .lte('created_at', end.toISOString())
+        .order('upvotes', { ascending: false });
+
+      const feed = document.getElementById('haikuFeed');
+      if (error) {
+        feed.innerText = 'Could not load haikus.';
+        console.error(error);
+        return;
+      }
+
+      feed.innerHTML = '';
+      if (data.length === 0) {
+        feed.innerText = 'No haikus for this day yet.';
+        return;
+      }
+
+      data.forEach(h => {
+        const div = document.createElement('div');
+        div.className = 'saved-haiku';
+        div.innerText = `${h.text}\n\n👍 ${h.upvotes} — ${new Date(h.created_at).toLocaleDateString()}`;
+        const btn = document.createElement('button');
+        btn.className = 'upvote-btn';
+        btn.innerText = 'Upvote';
+        btn.onclick = () => upvoteHaiku(h.id);
+        div.appendChild(btn);
+        feed.appendChild(div);
+      });
+    }
+
+    function countSyllables(word) {
+      word = word.toLowerCase();
+      if (word.length <= 3) return 1;
+      word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+      word = word.replace(/^y/, '');
+      const syllables = word.match(/[aeiouy]{1,2}/g);
+      return syllables ? syllables.length : 1;
+    }
+
+    function syllableCount(line) {
+      return line.split(/\s+/).map(countSyllables).reduce((a, b) => a + b, 0);
+    }
+
+    function updateLiveSyllables() {
+      const input = document.getElementById('haikuInput').value.trim();
+      const lines = input.split('\n').map(line => line.trim()).filter(line => line !== '');
+      const liveSyllables = document.getElementById('liveSyllables');
+      const targets = [5, 7, 5];
+      if (lines.length === 0) {
+        liveSyllables.innerHTML = '';
+        return;
+      }
+      let html = '<strong>🌸 Live Syllable Count:</strong><br><br>';
+      lines.forEach((line, i) => {
+        const count = syllableCount(line);
+        const target = targets[i] || 0;
+        let color = 'black';
+        if (count === target) color = 'green';
+        else if (count > target) color = 'red';
+        html += `<span style="color:${color}">Line ${i + 1}: ${count} / ${target} syllables</span><br>`;
+      });
+      liveSyllables.innerHTML = html;
+    }
+
+    function checkHaiku() {
+      const input = document.getElementById('haikuInput').value.trim();
+      const lines = input.split('\n').map(line => line.trim()).filter(line => line !== '');
+      const result = document.getElementById('result');
+      if (lines.length !== 3) {
+        result.innerHTML = '<p class="invalid">❌ Your haiku must have exactly 3 lines.</p>';
+        return;
+      }
+      const syllableCounts = lines.map(syllableCount);
+      const isValid = syllableCounts[0] === 5 && syllableCounts[1] === 7 && syllableCounts[2] === 5;
+      result.innerHTML = `<p class="${isValid ? 'valid' : 'invalid'}">
+        Syllables per line: ${syllableCounts.join(' / ')}<br>
+        ${isValid ? '✅ Beautiful! This is a valid haiku.' : '❌ This does not match the 5-7-5 pattern.'}
+      </p>`;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const datePicker = document.getElementById('datePicker');
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0];
+      datePicker.max = todayString;
+      datePicker.value = todayString;
+      selectedDate = new Date(datePicker.value);
+
+      datePicker.addEventListener('change', async (e) => {
+        selectedDate = new Date(e.target.value);
+        loadHaikus(selectedDate);
+      });
+
+      document.getElementById('haikuInput').addEventListener('input', updateLiveSyllables);
+
+      loadHaikus(selectedDate);
+    });
+  </script>
+</body>
+</html>
